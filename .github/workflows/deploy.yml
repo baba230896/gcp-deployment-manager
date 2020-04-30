@@ -1,0 +1,43 @@
+name: Deploy to GCP
+
+on: [push]
+
+jobs:
+  deploy-on-gcp:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Install Dependencies for testing
+        run: sudo apt-get install redis-tools postgresql-client -y
+
+      # Setup gcloud CLI
+      - name: Setup gcloud CLI
+        uses: GoogleCloudPlatform/github-actions/setup-gcloud@master
+        with:
+          version: '270.0.0'
+          service_account_email: ${{ secrets.gcp_service_account_email }}
+          service_account_key: ${{ secrets.gcp_service_account_key }}
+          project_id: ${{ secrets.gcp_project_id }}
+
+      # Deploy to GCP using gcloud CLI
+      - name: Deploy to GCP
+        run: gcloud deployment-manager deployments create yb-${{ github.run_id }}-${{ github.run_number }} --config=yugabyte-deployment.yaml
+        id: deploy
+
+      # Sleep for 6 minutes
+      - name: Wait for 360 seconds
+        uses: jakejarvis/wait-action@master
+        with:
+          time: '360s'
+
+      - name: "Execute deploy-test.sh"
+        continue-on-error: true
+        run: |
+          .ci/deploy-test.sh ${{ github.run_id }} ${{ github.run_number }}
+
+      # Delete deployment
+      - name: Delete Deployment
+        run: gcloud deployment-manager deployments delete yb-${{ github.run_id }}-${{ github.run_number }} -q
+        continue-on-error: true
